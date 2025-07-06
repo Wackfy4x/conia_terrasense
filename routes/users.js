@@ -164,4 +164,13 @@ router.get("/all", async function(req,res,next){
     next(error)
   }
 });
+
+router.get("/area", async function(req,res,next){
+  try {
+    res.json(await userservice.get_embouteillage_area(req.query.latitude, req.query.longitude, req.query.rayon));
+  } catch (error) {
+    console.log(error);
+    next(error)
+  }
+});
 module.exports = router;

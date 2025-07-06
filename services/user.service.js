@@ -6,6 +6,7 @@ const path = require("path");
 const fs = require("fs");
 const multer = require('multer');
 const axios = require('axios');
+const geolib = require('geolib');
 
 async function getUserById(id){
 
@@ -64,60 +65,60 @@ async function createNotification(io) {
     }
 }
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        // Types MIME pour les images et vidéos
-        const imageMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-        const videoMimeTypes = ['video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm'];
-
-        // Déterminer le sous-dossier selon le type de fichier
-        let subfolder;
-        if (imageMimeTypes.includes(file.mimetype)) {
-            subfolder = 'images';
-        } else if (videoMimeTypes.includes(file.mimetype)) {
-            subfolder = 'videos';
-        } else {
-            throw new Error("type de fichier pas pris en charge .")
-        }
-
-        // Construire le chemin complet
-        const uploadPath = path.join(__dirname, '../uploads', subfolder);
-
-        // Créer le dossier s'il n'existe pas
-        if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-        }
-
-        cb(null, uploadPath);
-    },
-
-    filename: (req, file, cb) => {
-        // Générer un nom de fichier unique avec l'extension originale
-        const uniqueName = `${Date.now()}-${file.originalname}`;
-        console.log(uniqueName);
-        cb(null, uniqueName);
-    },
-});
-
-const upload = multer({
-    storage: storage,
-    limits: {
-        fileSize: 1024 * 1024 * 100 // Limite à 100MB par fichier
-    },
-    fileFilter: (req, file, cb) => {
-        // Autoriser seulement certains types de fichiers
-        const allowedTypes = [
-            'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-            'video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm',
-        ];
-
-        if (allowedTypes.includes(file.mimetype)) {
-            cb(null, true);
-        } else {
-            cb(new Error('Type de fichier non autorisé'), false);
-        }
-    }
-});
+// const storage = multer.diskStorage({
+//     destination: (req, file, cb) => {
+//         // Types MIME pour les images et vidéos
+//         const imageMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+//         const videoMimeTypes = ['video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm'];
+//
+//         // Déterminer le sous-dossier selon le type de fichier
+//         let subfolder;
+//         if (imageMimeTypes.includes(file.mimetype)) {
+//             subfolder = 'images';
+//         } else if (videoMimeTypes.includes(file.mimetype)) {
+//             subfolder = 'videos';
+//         } else {
+//             throw new Error("type de fichier pas pris en charge .")
+//         }
+//
+//         // Construire le chemin complet
+//         const uploadPath = path.join(__dirname, '../uploads', subfolder);
+//
+//         // Créer le dossier s'il n'existe pas
+//         if (!fs.existsSync(uploadPath)) {
+//             fs.mkdirSync(uploadPath, { recursive: true });
+//         }
+//
+//         cb(null, uploadPath);
+//     },
+//
+//     filename: (req, file, cb) => {
+//         // Générer un nom de fichier unique avec l'extension originale
+//         const uniqueName = `${Date.now()}-${file.originalname}`;
+//         console.log(uniqueName);
+//         cb(null, uniqueName);
+//     },
+// });
+//
+// const upload = multer({
+//     storage: storage,
+//     limits: {
+//         fileSize: 1024 * 1024 * 100 // Limite à 100MB par fichier
+//     },
+//     fileFilter: (req, file, cb) => {
+//         // Autoriser seulement certains types de fichiers
+//         const allowedTypes = [
+//             'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+//             'video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm',
+//         ];
+//
+//         if (allowedTypes.includes(file.mimetype)) {
+//             cb(null, true);
+//         } else {
+//             cb(new Error('Type de fichier non autorisé'), false);
+//         }
+//     }
+// });
 
 
 async function save_filedata(data) {
@@ -161,20 +162,46 @@ async function save_filedata(data) {
 
 function filterByDate(items) {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    console.log(oneHourAgo);
     return items.filter(item => {
         const itemDate = new Date(item.date);
-        // console.log(itemDate.getHours());
         console.log(new Date().getHours() - 1)
-        return itemDate.getHours() <= (new Date().getHours() - 1);
+        return itemDate >= oneHourAgo;
+    });
+}
+
+function filterByDate_area(items, latitude, longitude, rayon) {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    console.log(oneHourAgo);
+    return items.filter(item => {
+        const itemDate = new Date(item.date);
+        console.log(new Date().getHours() - 1)
+        const distance = geolib.getDistance(
+            {latitude: latitude, longitude: longitude},
+            {latitude: item.latitude, longitude: item.longitude},
+        )
+        return ((itemDate >= oneHourAgo) && (geolib.convertDistance(distance, 'km') <= rayon ));
     });
 }
 
 async function getAll_embouteillage() {
     const rows=await db.query(
-        "SELECT * FROM metadonnee WHERE embouteillage=0"
+        "SELECT * FROM metadonnee WHERE embouteillage=1"
     )
     let data=helper.emptyorRows(rows);
     data = filterByDate(data);
+    console.log(data);
+    return {
+        data
+    }
+}
+
+async function get_embouteillage_area(latitude, longitude, rayon) {
+    const rows=await db.query(
+        "SELECT * FROM metadonnee WHERE embouteillage=0"
+    )
+    let data=helper.emptyorRows(rows);
+    data = filterByDate_area(data, latitude, longitude, rayon);
     console.log(data);
     return {
         data
@@ -184,6 +211,7 @@ module.exports = {
     getUserById,
     createNotification,
     save_filedata,
-    upload,
-    getAll_embouteillage
+    // upload,
+    getAll_embouteillage,
+    get_embouteillage_area
 };
